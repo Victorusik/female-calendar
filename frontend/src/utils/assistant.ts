@@ -8,8 +8,13 @@ export const initializeAssistant = (getState: () => any) => {
   if (import.meta.env.MODE === 'development') {
     return createSmartappDebugger({
       token: import.meta.env.VITE_SMARTAPP_TOKEN || '',
-      initPhrase: 'Запусти женский календарь',
+      initPhrase: `Запусти ${import.meta.env.VITE_SMARTAPP_NAME || 'смартапп'}`,
       getState,
+      nativePanel: {
+        defaultText: 'Говорите!',
+        screenshotMode: false,
+        tabIndex: -1,
+      },
     });
   }
 
