@@ -51,6 +51,8 @@ app.post('/webhook', async (req, res) => {
     const reply = {
       messageName: 'ANSWER_TO_USER',
       payload: {
+        device: payload?.device,
+        app_info: payload?.app_info,
         generate_interactions: {
           actions: []
         },
