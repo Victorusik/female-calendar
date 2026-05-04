@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { initializeAssistant } from './utils/assistant';
@@ -67,7 +67,7 @@ export const App = () => {
           break;
         }
         case 'GET_ADVICE_REQUESTED': {
-          console.log('Бот просит данные для совета. Цикл начат?', !!cycleRef.current);
+          console.log('Бот просит данные для совета. Цикл начат?');
           if (!cycleRef.current) {
             assistantRef.current?.sendData({
                action: { action_id: 'NO_CYCLE_STARTED' }
