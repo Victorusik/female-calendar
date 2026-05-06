@@ -4,12 +4,13 @@ import 'react-calendar/dist/Calendar.css';
 import { initializeAssistant } from './utils/assistant';
 import { getCycleDay } from './utils/cycle';
 import { getMockLLMAdvice } from './utils/llm';
-import './App.css'; // Make sure styles are applied
+import './App.css';
 
 export const App = () => {
   const [cycleStartDate, setCycleStartDate] = useState<string | null>(localStorage.getItem('cycleStartDate'));
   const [cycleEndDate, setCycleEndDate] = useState<string | null>(localStorage.getItem('cycleEndDate'));
   const [adviceText, setAdviceText] = useState<string>('');
+  const [isAnimatingAdvice, setIsAnimatingAdvice] = useState(false);
 
   const cycleRef = useRef(cycleStartDate);
 
@@ -18,6 +19,14 @@ export const App = () => {
   }, [cycleStartDate]);
 
   const assistantRef = useRef<ReturnType<typeof initializeAssistant> | null>(null);
+
+  const updateAdviceWithAnimation = (text: string) => {
+    setIsAnimatingAdvice(false);
+    setTimeout(() => {
+      setAdviceText(text);
+      setIsAnimatingAdvice(true);
+    }, 10);
+  };
 
   useEffect(() => {
     assistantRef.current = initializeAssistant(() => ({
@@ -75,12 +84,10 @@ export const App = () => {
           } else {
             const currentDay = getCycleDay(cycleRef.current);
             console.log('Отправляем боту ответ: день', currentDay);
-            setAdviceText('Формирую совет...');
+            updateAdviceWithAnimation('Формирую совет...');
 
-            // Обращаемся к нашей заглушке напрямую на фронте
             getMockLLMAdvice(currentDay).then(advice => {
-              setAdviceText(advice);
-              // Отправляем готовый совет обратно ассистенту, чтобы он его озвучил
+              updateAdviceWithAnimation(advice);
               assistantRef.current?.sendData({
                  action: { action_id: 'ADVICE_READY', parameters: { advice: advice } }
               });
@@ -91,7 +98,7 @@ export const App = () => {
         case 'SHOW_ADVICE': {
           console.log('Бот прислал готовый совет от LLM:', action.parameters?.advice);
           if (action.parameters?.advice) {
-            setAdviceText(action.parameters.advice);
+            updateAdviceWithAnimation(action.parameters.advice);
           }
           break;
         }
@@ -113,16 +120,15 @@ export const App = () => {
       const endStr = cycleEndDate ? new Date(cycleEndDate).toDateString() : null;
 
       const classes = [];
-      if (startStr && dateStr === startStr) classes.push('cycle-start-date');
-      if (endStr && dateStr === endStr) classes.push('cycle-end-date');
+      if (startStr && dateStr === startStr) classes.push('cycle-start');
+      if (endStr && dateStr === endStr) classes.push('cycle-end');
 
-      // Highlight the range
       if (cycleStartDate && cycleEndDate) {
         const current = date.getTime();
         const start = new Date(cycleStartDate).getTime();
         const end = new Date(cycleEndDate).getTime();
         if (current > start && current < end) {
-          classes.push('cycle-in-range');
+          classes.push('cycle-range');
         }
       }
       return classes.join(' ');
@@ -130,37 +136,62 @@ export const App = () => {
     return null;
   };
 
+  const handleManualStart = () => {
+    const todayStart = new Date().toISOString();
+    setCycleStartDate(todayStart);
+    setCycleEndDate(null);
+    localStorage.setItem('cycleStartDate', todayStart);
+    localStorage.removeItem('cycleEndDate');
+  };
+
+  const handleManualEnd = () => {
+    const todayEnd = new Date().toISOString();
+    setCycleEndDate(todayEnd);
+    localStorage.setItem('cycleEndDate', todayEnd);
+  };
+
+  const isCycleActive = cycleStartDate && !cycleEndDate;
+
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto' }}>
-      <h1>Женский календарь</h1>
-      <p style={{ fontSize: '18px' }}>
-        <strong>Старт текущего цикла:</strong> {cycleStartDate ? new Date(cycleStartDate).toLocaleDateString() : 'Не отмечено'}
-      </p>
-      {cycleEndDate && (
-        <p style={{ fontSize: '18px' }}>
-          <strong>Конец текущего цикла:</strong> {new Date(cycleEndDate).toLocaleDateString()}
-        </p>
-      )}
+    <div className={`app-container ${isCycleActive ? 'bg-cycle' : 'bg-normal'}`}>
+      <div id="center">
+        <h1>Luna</h1>
+        <p className="subtitle">Трекер женского здоровья</p>
 
-      <div style={{ marginTop: '20px', marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
-        <Calendar
-          tileClassName={getTileClassName}
-          value={cycleStartDate ? new Date(cycleStartDate) : new Date()}
-        />
-      </div>
-
-      <style>{`
-        .cycle-start-date { background: #ff7675 !important; color: white !important; border-radius: 8px; }
-        .cycle-end-date { background: #d63031 !important; color: white !important; border-radius: 8px; }
-        .cycle-in-range { background: #ffeaa7 !important; border-radius: 8px; }
-      `}</style>
-
-      {adviceText && (
-        <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ccc', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
-          <p><strong>Совет от ассистента:</strong></p>
-          <p style={{ fontStyle: 'italic' }}>{adviceText}</p>
+        <div className="glass-card">
+          <Calendar
+            tileClassName={getTileClassName}
+            value={cycleStartDate ? new Date(cycleStartDate) : new Date()}
+          />
         </div>
-      )}
+
+        <div className="action-buttons">
+          <button className="btn-primary" onClick={handleManualStart}>
+            Начать цикл
+          </button>
+          <button className="btn-secondary" onClick={handleManualEnd} disabled={!cycleStartDate}>
+            Завершить цикл
+          </button>
+        </div>
+
+        {adviceText && (
+          <div className="advice-container glass-card" style={{ marginTop: '32px' }}>
+            <div className={isAnimatingAdvice ? 'advice-fade-enter-active' : 'advice-fade-enter'}>
+              <p style={{ fontWeight: 'bold', marginBottom: '8px', color: 'var(--accent)' }}>
+                Совет от ассистента
+              </p>
+              <p className="advice-text">{adviceText}</p>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 'auto', paddingTop: '40px', fontSize: '0.9rem', opacity: 0.7 }}>
+          <p>
+            Статус: {cycleStartDate ? `Цикл начат ${new Date(cycleStartDate).toLocaleDateString()}` : 'Цикл не начат'}
+            {cycleEndDate && ` · Завершен ${new Date(cycleEndDate).toLocaleDateString()}`}
+          </p>
+        </div>
+      </div>
     </div>
   );
 };
