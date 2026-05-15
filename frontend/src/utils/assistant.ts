@@ -3,10 +3,16 @@ import {
   createSmartappDebugger,
 } from '@salutejs/client';
 
+let assistantInstance: any = null;
+
 export const initializeAssistant = (getState: () => any) => {
+  if (assistantInstance) {
+    return assistantInstance;
+  }
+
   // Для локальной отладки используем createSmartappDebugger
   if (import.meta.env.MODE === 'development') {
-    return createSmartappDebugger({
+    assistantInstance = createSmartappDebugger({
       token: import.meta.env.VITE_SMARTAPP_TOKEN || '',
       initPhrase: `Запусти ${import.meta.env.VITE_SMARTAPP_NAME || 'смартапп'}`,
       getState,
@@ -14,10 +20,13 @@ export const initializeAssistant = (getState: () => any) => {
         defaultText: 'Говорите!',
         screenshotMode: false,
         tabIndex: -1,
+        hideNativePanel: false,
       },
     });
+    return assistantInstance;
   }
 
   // На бою: инициализация стандартного клиента
-  return createAssistant({ getState });
+  assistantInstance = createAssistant({ getState });
+  return assistantInstance;
 };
