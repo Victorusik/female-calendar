@@ -6,17 +6,47 @@ import { getCycleDay } from './utils/cycle';
 import { getMockLLMAdvice } from './utils/llm';
 import './App.css';
 
+interface Cycle {
+  startDate: string;
+  endDate: string | null;
+}
+
 export const App = () => {
-  const [cycleStartDate, setCycleStartDate] = useState<string | null>(localStorage.getItem('cycleStartDate'));
-  const [cycleEndDate, setCycleEndDate] = useState<string | null>(localStorage.getItem('cycleEndDate'));
+  const [cycles, setCycles] = useState<Cycle[]>(() => {
+    const stored = localStorage.getItem('cycles');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        console.error('Failed to parse cycles from localStorage', e);
+      }
+    }
+    const oldStart = localStorage.getItem('cycleStartDate');
+    const oldEnd = localStorage.getItem('cycleEndDate');
+    if (oldStart) {
+      const migrated = [{ startDate: oldStart, endDate: oldEnd }];
+      localStorage.setItem('cycles', JSON.stringify(migrated));
+      localStorage.removeItem('cycleStartDate');
+      localStorage.removeItem('cycleEndDate');
+      return migrated;
+    }
+    return [];
+  });
+
   const [adviceText, setAdviceText] = useState<string>('');
   const [isAnimatingAdvice, setIsAnimatingAdvice] = useState(false);
 
-  const cycleRef = useRef(cycleStartDate);
+  const activeCycle = cycles[cycles.length - 1]?.endDate === null ? cycles[cycles.length - 1] : null;
+  const cycleRef = useRef(activeCycle?.startDate || null);
 
   useEffect(() => {
-    cycleRef.current = cycleStartDate;
-  }, [cycleStartDate]);
+    cycleRef.current = activeCycle?.startDate || null;
+  }, [cycles]);
+
+  const saveCycles = (newCycles: Cycle[]) => {
+    setCycles(newCycles);
+    localStorage.setItem('cycles', JSON.stringify(newCycles));
+  };
 
   const assistantRef = useRef<ReturnType<typeof initializeAssistant> | null>(null);
 
@@ -62,17 +92,29 @@ export const App = () => {
         case 'START_CYCLE': {
           console.log('Бот прислал команду начать цикл');
           const todayStart = new Date().toISOString();
-          setCycleStartDate(todayStart);
-          setCycleEndDate(null);
-          localStorage.setItem('cycleStartDate', todayStart);
-          localStorage.removeItem('cycleEndDate');
+          setCycles((prevList) => {
+             const newList = prevList.map(c => ({ ...c }));
+             const last = newList[newList.length - 1];
+             if (last && !last.endDate) {
+                 last.endDate = todayStart;
+             }
+             newList.push({ startDate: todayStart, endDate: null });
+             localStorage.setItem('cycles', JSON.stringify(newList));
+             return newList;
+          });
           break;
         }
         case 'END_CYCLE': {
           console.log('Бот прислал команду закончить цикл');
           const todayEnd = new Date().toISOString();
-          setCycleEndDate(todayEnd);
-          localStorage.setItem('cycleEndDate', todayEnd);
+          setCycles((prevList) => {
+             const newList = prevList.map(c => ({ ...c }));
+             if (newList.length > 0 && !newList[newList.length - 1].endDate) {
+                 newList[newList.length - 1].endDate = todayEnd;
+                 localStorage.setItem('cycles', JSON.stringify(newList));
+             }
+             return newList;
+          });
           break;
         }
         case 'GET_ADVICE_REQUESTED': {
@@ -115,22 +157,40 @@ export const App = () => {
 
   const getTileClassName = ({ date, view }: { date: Date, view: string }) => {
     if (view === 'month') {
-      const dateStr = date.toDateString();
-      const startStr = cycleStartDate ? new Date(cycleStartDate).toDateString() : null;
-      const endStr = cycleEndDate ? new Date(cycleEndDate).toDateString() : null;
+      const cellTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+      const todayTime = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+      
+      const classes: string[] = [];
 
-      const classes = [];
-      if (startStr && dateStr === startStr) classes.push('cycle-start');
-      if (endStr && dateStr === endStr) classes.push('cycle-end');
-
-      if (cycleStartDate && cycleEndDate) {
-        const current = date.getTime();
-        const start = new Date(cycleStartDate).getTime();
-        const end = new Date(cycleEndDate).getTime();
-        if (current > start && current < end) {
-          classes.push('cycle-range');
+      cycles.forEach((cycle) => {
+        const startDateObj = new Date(cycle.startDate);
+        const startTime = new Date(startDateObj.getFullYear(), startDateObj.getMonth(), startDateObj.getDate()).getTime();
+        
+        let endTime = null;
+        if (cycle.endDate) {
+          const endDateObj = new Date(cycle.endDate);
+          endTime = new Date(endDateObj.getFullYear(), endDateObj.getMonth(), endDateObj.getDate()).getTime();
         }
-      }
+
+        if (cellTime === startTime) {
+          classes.push('cycle-start');
+        }
+
+        if (endTime !== null && cellTime === endTime) {
+          classes.push('cycle-end');
+        }
+
+        if (endTime !== null) {
+          if (cellTime > startTime && cellTime < endTime) {
+            classes.push('cycle-range');
+          }
+        } else {
+          if (cellTime > startTime && cellTime <= todayTime) {
+            classes.push('cycle-range');
+          }
+        }
+      });
+
       return classes.join(' ');
     }
     return null;
@@ -138,19 +198,19 @@ export const App = () => {
 
   const handleManualStart = () => {
     const todayStart = new Date().toISOString();
-    setCycleStartDate(todayStart);
-    setCycleEndDate(null);
-    localStorage.setItem('cycleStartDate', todayStart);
-    localStorage.removeItem('cycleEndDate');
+    const newList = [...cycles, { startDate: todayStart, endDate: null }];
+    saveCycles(newList);
   };
 
   const handleManualEnd = () => {
+    if (cycles.length === 0 || cycles[cycles.length - 1].endDate) return;
     const todayEnd = new Date().toISOString();
-    setCycleEndDate(todayEnd);
-    localStorage.setItem('cycleEndDate', todayEnd);
+    const newList = [...cycles];
+    newList[newList.length - 1].endDate = todayEnd;
+    saveCycles(newList);
   };
 
-  const isCycleActive = cycleStartDate && !cycleEndDate;
+  const isCycleActive = Boolean(activeCycle);
 
   return (
     <div className={`app-container ${isCycleActive ? 'bg-cycle' : 'bg-normal'}`}>
@@ -161,15 +221,15 @@ export const App = () => {
         <div className="glass-card">
           <Calendar
             tileClassName={getTileClassName}
-            value={cycleStartDate ? new Date(cycleStartDate) : new Date()}
+            value={activeCycle ? new Date(activeCycle.startDate) : new Date()}
           />
         </div>
 
         <div className="action-buttons">
-          <button className="btn-primary" onClick={handleManualStart}>
+          <button className="btn-primary" onClick={handleManualStart} disabled={isCycleActive}>
             Начать цикл
           </button>
-          <button className="btn-secondary" onClick={handleManualEnd} disabled={!cycleStartDate}>
+          <button className="btn-secondary" onClick={handleManualEnd} disabled={!isCycleActive}>
             Завершить цикл
           </button>
         </div>
@@ -187,8 +247,9 @@ export const App = () => {
 
         <div style={{ marginTop: 'auto', paddingTop: '40px', fontSize: '0.9rem', opacity: 0.7 }}>
           <p>
-            Статус: {cycleStartDate ? `Цикл начат ${new Date(cycleStartDate).toLocaleDateString()}` : 'Цикл не начат'}
-            {cycleEndDate && ` · Завершен ${new Date(cycleEndDate).toLocaleDateString()}`}
+            Статус: {isCycleActive ? `Текущий цикл начат ${new Date(activeCycle!.startDate).toLocaleDateString()}` : 'Нет активного цикла'}
+            {!isCycleActive && cycles.length > 0 && ` · Последний завершен ${new Date(cycles[cycles.length - 1].endDate!).toLocaleDateString()}`}
+            <br/>Всего циклов: {cycles.length}
           </p>
         </div>
       </div>
