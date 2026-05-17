@@ -35,6 +35,7 @@ export const App = () => {
 
   const [adviceText, setAdviceText] = useState<string>('');
   const [isAnimatingAdvice, setIsAnimatingAdvice] = useState(false);
+  const [currentViewDate, setCurrentViewDate] = useState<Date>(new Date());
 
   const activeCycle = cycles[cycles.length - 1]?.endDate === null ? cycles[cycles.length - 1] : null;
   const cycleRef = useRef(activeCycle?.startDate || null);
@@ -144,6 +145,25 @@ export const App = () => {
           }
           break;
         }
+        case 'NEXT_MONTH': {
+          console.log('Бот прислал команду показать следующий месяц');
+          setCurrentViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+          break;
+        }
+        case 'PREV_MONTH': {
+          console.log('Бот прислал команду показать предыдущий месяц');
+          setCurrentViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+          break;
+        }
+        case 'GO_TO_DATE': {
+          console.log('Бот прислал команду перейти к дате', action.payload);
+          if (action.payload && action.payload.month) {
+            const targetMonthIndex = parseInt(action.payload.month) - 1;
+            const targetYear = action.payload.year ? parseInt(action.payload.year) : new Date().getFullYear();
+            setCurrentViewDate(new Date(targetYear, targetMonthIndex, 1));
+          }
+          break;
+        }
         default:
           console.log('Неизвестный тип action:', action.type);
           break;
@@ -220,6 +240,8 @@ export const App = () => {
 
         <div className="glass-card">
           <Calendar
+            activeStartDate={currentViewDate}
+            onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setCurrentViewDate(activeStartDate)}
             tileClassName={getTileClassName}
             value={activeCycle ? new Date(activeCycle.startDate) : new Date()}
           />
